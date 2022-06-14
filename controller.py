@@ -92,8 +92,6 @@ class StanleyController:
         return limited_steering_angle, target_index, crosstrack_error
 
 
-
-
 # subscriber and publisher for the controller
 # Subscribe: 
 """
@@ -107,75 +105,79 @@ class StanleyController:
 /ctrl_raw : command for vehicle
 """
 
-def LaneArrayCallback(msg):
-    px = msg.lanes[0].waypoints[0].pose.pose.position.x
-    py = msg.lanes[0].waypoints[0].pose.pose.position.y
-    Qx = msg.lanes[0].waypoints[0].pose.pose.orientation.x
-    Qy = msg.lanes[0].waypoints[0].pose.pose.orientation.y
-    Qz = msg.lanes[0].waypoints[0].pose.pose.orientation.z
-    Qw = msg.lanes[0].waypoints[0].pose.pose.orientation.w
-    _, _, pyaw = euler_from_quaternion([Qx, Qy, Qz, Qw])
-    
-    return px, py, pyaw
-    
-def CurrentPoseCallback(self, msg):
-    x = msg.pose.pose.position.x
-    y = msg.pose.pose.position.y
-    xr = msg.pose.pose.orientation.x
-    yr = msg.pose.pose.orientation.y
-    zr = msg.pose.pose.orientation.z
-    wr = msg.pose.pose.orientation.w
-    _, _, yaw = euler_from_quaternion([xr, yr, zr, wr])
+class ROS_Stanley:
+    def __init__(self):
+        rospy.init_node('Stanley_control')
+        self.rate = rospy.Rate(50.0)
         
-    return x, y, yaw
-
-def CurrentTwistCallback(self, msg):
-    vx = msg.twist.twist.linear.x
-    vy = msg.twist.twist.linear.y
-    vz = msg.twist.twist.linear.z
-    wx = msg.twist.twist.angular.x
-    wy = msg.twist.twist.angular.y
-    wz = msg.twist.twist.angular.z
-    return vx, vy, vz, wx, wy, wz
-
-
-
-def subscriber():
-    rospy.Subscriber("/mpc_waypoints" , LaneArray, callback = LaneArrayCallback, queue_size=1)
-    rospy.Subscriber("/current_pose"  , PoseStamped, callback = CurrentPoseCallback, queue_size=1)
-    rospy.Subscriber("/vehicle_status", TwistStamped,callback = CurrentTwistCallback, queue_size=1)
+        self.px = 0
+        self.py = 0
+        self.pyaw = 0
+        
+        self.x = 0
+        self.y = 0
+        self.yaw = 0
+        
+        self.vx = 0
+        self.vy = 0
+        self.vz = 0
+        self.wx = 0
+        self.wy = 0
+        self.wz = 0
+        
+        rospy.Subscriber("/mpc_waypoints" , LaneArray, callback = self.LaneArrayCallback, queue_size=1)
+        rospy.Subscriber("/current_pose"  , PoseStamped, callback = self.CurrentPoseCallback, queue_size=1)
+        rospy.Subscriber("/vehicle_status", TwistStamped,callback = self.CurrentTwistCallback, queue_size=1)
+        
+        while not rospy.is_shutdown():
+            self.publisher()
+        
+    def LaneArrayCallback(self, msg):
+        """Get the x,y, yaw coordinates of reference path"""
+        self.px = msg.lanes[0].waypoints[0].pose.pose.position.x
+        self.py = msg.lanes[0].waypoints[0].pose.pose.position.y
+        Qx = msg.lanes[0].waypoints[0].pose.pose.orientation.x
+        Qy = msg.lanes[0].waypoints[0].pose.pose.orientation.y
+        Qz = msg.lanes[0].waypoints[0].pose.pose.orientation.z
+        Qw = msg.lanes[0].waypoints[0].pose.pose.orientation.w
+        _, _, self.pyaw = euler_from_quaternion([Qx, Qy, Qz, Qw])
     
-    return px, py, pyaw, x, y, yaw, vx, vy, vz, wx, wy, wz
-    
-def publisher(px, py, pyaw, x, y, yaw):
-    # msg_twist = TwistStamped()
-    # msg_pose = PoseStamped()
-    print('x, y, yaw =' + str(x) + ',' + str(y) + ',' + str(yaw))
-    print('px, py, pyaw = '+ str(px)+ ',' + str(py) + ',' + str(pyaw))
+    def CurrentPoseCallback(self, msg):
+        """Get the current x,y,yaw of the vehicle"""
+        self.x = msg.pose.pose.position.x
+        self.y = msg.pose.pose.position.y
+        xr = msg.pose.pose.orientation.x
+        yr = msg.pose.pose.orientation.y
+        zr = msg.pose.pose.orientation.z
+        wr = msg.pose.pose.orientation.w
+        _, _, self.yaw = euler_from_quaternion([xr, yr, zr, wr])
+        
+    def CurrentTwistCallback(self, msg):
+        """Get the current vx,vy,vz,wx,wy,wz (linear and angular accelerations) of the vehicle"""
+        self.vx = msg.twist.twist.linear.x
+        self.vy = msg.twist.twist.linear.y
+        self.vz = msg.twist.twist.linear.z
+        self.wx = msg.twist.twist.angular.x
+        self.wy = msg.twist.twist.angular.y
+        self.wz = msg.twist.twist.angular.z
+ 
+    def publisher(self):
+        # msg_twist = TwistStamped()
+        # msg_pose = PoseStamped()
+        print('x, y, yaw =' + str(self.x) + ',' + str(self.y) + ',' + str(self.yaw))
+        print('px, py, pyaw = '+ str(self.px)+ ',' + str(self.py) + ',' + str(self.pyaw))
 
-    
-    msg_ctrl = ControlCommandStamped()
-    msg_ctrl.cmd.steering_angle = -1 * np.pi/180
-    
-    # pub_twist = rospy.Publisher("/twist_raw", TwistStamped, queue_size=1)
-    pub_pose = rospy.Publisher("/ctrl_raw", ControlCommandStamped, queue_size=1)
-    pub_pose.publish(msg_ctrl)
+        
+        msg_ctrl = ControlCommandStamped()
+        msg_ctrl.cmd.steering_angle = -1 * np.pi/180
+        
+        # pub_twist = rospy.Publisher("/twist_raw", TwistStamped, queue_size=1)
+        pub_pose = rospy.Publisher("/ctrl_raw", ControlCommandStamped, queue_size=1)
+        pub_pose.publish(msg_ctrl)
 
 
 if __name__ == '__main__':
-    global px, py, pyaw, x, y, yaw, vx
-    px = 0
-    py = 0
-    pyaw = 0
-    x = 0
-    y = 0
-    yaw = 0
-    vx = 0
-    
     try:
-        rospy.init_node('Stanley_control')
-        while not rospy.is_shutdown():
-            px,py,pyaw,x,y,yaw, vx, _, _, _, _, _ = subscriber()
-            publisher(px, py, pyaw, x, y, yaw)
+        ROS_Stanley()
     except rospy.ROSInterruptException:
         pass
