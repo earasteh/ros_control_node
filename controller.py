@@ -118,22 +118,42 @@ def LaneArrayCallback(msg):
     
     return px, py, pyaw
     
-# def CurrCallback(self, msg):
-#     # yaw = msg.
+def CurrentPoseCallback(self, msg):
+    x = msg.pose.pose.position.x
+    y = msg.pose.pose.position.y
+    xr = msg.pose.pose.orientation.x
+    yr = msg.pose.pose.orientation.y
+    zr = msg.pose.pose.orientation.z
+    wr = msg.pose.pose.orientation.w
+    _, _, yaw = euler_from_quaternion([xr, yr, zr, wr])
+        
+    return x, y, yaw
 
-# def statCallback(self, msg):
+def CurrentTwistCallback(self, msg):
+    vx = msg.twist.twist.linear.x
+    vy = msg.twist.twist.linear.y
+    vz = msg.twist.twist.linear.z
+    wx = msg.twist.twist.angular.x
+    wy = msg.twist.twist.angular.y
+    wz = msg.twist.twist.angular.z
+    return vx, vy, vz, wx, wy, wz
+
 
 
 def subscriber():
     rospy.Subscriber("/mpc_waypoints" , LaneArray, callback = LaneArrayCallback, queue_size=1)
-    # rospy.Subscriber("/current_pose"  , PoseStamped, CurrCallback, queue_size=1)
-    # rospy.Subscriber("/vehicle_status", TwistStamped,statCallback, queue_size=1)
+    rospy.Subscriber("/current_pose"  , PoseStamped, callback = CurrentPoseCallback, queue_size=1)
+    rospy.Subscriber("/vehicle_status", TwistStamped,callback = CurrentTwistCallback, queue_size=1)
     
-    return px, py, pyaw
+    return px, py, pyaw, x, y, yaw, vx, vy, vz, wx, wy, wz
     
-def publisher(px, py, pyaw):
+def publisher(px, py, pyaw, x, y, yaw):
     # msg_twist = TwistStamped()
     # msg_pose = PoseStamped()
+    print('x, y, yaw =' + str(x) + ',' + str(y) + ',' + str(yaw))
+    print('px, py, pyaw = '+ str(px)+ ',' + str(py) + ',' + str(pyaw))
+
+    
     msg_ctrl = ControlCommandStamped()
     msg_ctrl.cmd.steering_angle = -1 * np.pi/180
     
@@ -143,15 +163,19 @@ def publisher(px, py, pyaw):
 
 
 if __name__ == '__main__':
-    global px, py, pyaw
-    px = []
-    py = []
-    pyaw = []
+    global px, py, pyaw, x, y, yaw, vx
+    px = 0
+    py = 0
+    pyaw = 0
+    x = 0
+    y = 0
+    yaw = 0
+    vx = 0
     
     try:
         rospy.init_node('Stanley_control')
         while not rospy.is_shutdown():
-            px,py,pyaw=subscriber()
-            publisher(px, py, pyaw)
+            px,py,pyaw,x,y,yaw, vx, _, _, _, _, _ = subscriber()
+            publisher(px, py, pyaw, x, y, yaw)
     except rospy.ROSInterruptException:
         pass
