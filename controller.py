@@ -14,8 +14,7 @@ normalise_angle = lambda angle : atan2(sin(angle), cos(angle))
 
 class StanleyController:
     def __init__(self, control_gain=2.5, softening_gain=1.0, yaw_rate_gain=0.0, steering_damp_gain=0.0,
-                 max_steer=np.deg2rad(24), wheelbase=0.0,
-                 waypoints=None):
+                 max_steer=np.deg2rad(24), wheelbase=0.0):
         """
         Stanley Controller
         At initialisation
@@ -47,15 +46,15 @@ class StanleyController:
         self.max_steer = max_steer
         self.L = wheelbase
 
-        self._waypoints = waypoints
+        # self._waypoints = waypoints
         self._lookahead_distance = 5.0
         self.cross_track_deadband = 0.01
 
         # self.px = path_x
         # self.py = path_y
         # self.pyaw = path_yaw
-    def find_target_path_id(px, py, x, y, yaw, param):
-        L = param.L
+    def find_target_path_id(self, px, py, x, y, yaw):
+        L = self.L
 
         # Calculate position of the front axle
         fx = x + L * np.cos(yaw)
@@ -69,7 +68,7 @@ class StanleyController:
 
         return target_index, dx[target_index], dy[target_index], d[target_index], d
 
-    def stanley_control(self, x, y, yaw, current_velocity):
+    def stanley_control(self, x, y, yaw, current_velocity, px, py, pyaw):
         """
         :param x:
         :param y:
@@ -77,8 +76,8 @@ class StanleyController:
         :param current_velocity:
         :return: steering output, target index, crosstrack error
         """
-        target_index, dx, dy, absolute_error, _ = self.find_target_path_id(self.px, self.py, x, y, yaw, self.params)
-        yaw_error = normalise_angle(self.pyaw[target_index] - yaw)
+        target_index, dx, dy, absolute_error, _ = self.find_target_path_id(px, py, x, y, yaw)
+        yaw_error = normalise_angle(pyaw[target_index] - yaw)
         # calculate cross-track error
         front_axle_vector = [np.sin(yaw), -np.cos(yaw)]
         nearest_path_vector = [dx, dy]
@@ -110,9 +109,9 @@ class ROS_Stanley:
         rospy.init_node('Stanley_control')
         self.rate = rospy.Rate(50.0)
         
-        self.px = 0
-        self.py = 0
-        self.pyaw = 0
+        self.px = [0]
+        self.py = [0]
+        self.pyaw = [0]
         
         self.x = 0
         self.y = 0
@@ -124,6 +123,9 @@ class ROS_Stanley:
         self.wx = 0
         self.wy = 0
         self.wz = 0
+        
+        self.controller = StanleyController(control_gain=2.5, softening_gain=1, yaw_rate_gain=0, steering_damp_gain=0,
+                                        max_steer= np.deg2rad(10), wheelbase=2)
         
         rospy.Subscriber("/mpc_waypoints" , LaneArray, callback = self.LaneArrayCallback, queue_size=1)
         rospy.Subscriber("/current_pose"  , PoseStamped, callback = self.CurrentPoseCallback, queue_size=1)
@@ -166,10 +168,15 @@ class ROS_Stanley:
         # msg_pose = PoseStamped()
         print('x, y, yaw =' + str(self.x) + ',' + str(self.y) + ',' + str(self.yaw))
         print('px, py, pyaw = '+ str(self.px)+ ',' + str(self.py) + ',' + str(self.pyaw))
-
+        
+        limited_steering_angle, target_index, crosstrack_error = self.controller.stanley_control(self.x, self.y,
+                                                                                                 self.yaw, self.vx, 
+                                                                                                 self.px, self.py, self.pyaw)
         
         msg_ctrl = ControlCommandStamped()
-        msg_ctrl.cmd.steering_angle = -1 * np.pi/180
+        msg_ctrl.cmd.steering_angle = limited_steering_angle
+        
+        print(limited_steering_angle)
         
         # pub_twist = rospy.Publisher("/twist_raw", TwistStamped, queue_size=1)
         pub_pose = rospy.Publisher("/ctrl_raw", ControlCommandStamped, queue_size=1)
